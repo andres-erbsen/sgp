@@ -1,0 +1,41 @@
+
+enum PkEncAlgo {
+	NACL = 1; // curve25519, xsalsa20, poly1305
+}
+
+enum SigAlgo {
+	ED25519 = 1;
+}
+
+message Boxed {
+	optional PkEncAlgo enc_algo = 1;
+	optional bytes sender = 2;
+	optional bytes recipient_keyid = 3;
+	required bytes data = 4;
+}
+
+message Signed {
+	required bytes message = 1;
+	repeated SigAlgo sig_algos = 2;
+	repeated bytes sig_keyids = 3; // optional in PublicKey
+	repeated bytes sigs = 4;
+}
+
+
+// PublicKeyData is usually found in a Signed message, forming PublicKey
+message PublicKeyData {
+	repeated SigAlgo sig_algos = 1;
+	repeated PkEncAlgo enc_algos = 2;
+	repeated bytes sig_keys  = 3;
+	repeated bytes enc_keys  = 4;
+	optional int64 time = 5; // unix "epoch" format
+}
+
+// Attribution is usually found in a Signed message, forming Certification
+message Attribution {
+	// Either
+		optional SigAlgo sig_algo = 1;
+		optional PkEncAlgo enc_algo = 2;
+	required bytes pubkey = 3;
+	required bytes name = 4;
+}
