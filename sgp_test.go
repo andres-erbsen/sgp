@@ -24,3 +24,29 @@ func TestGenerateKey(t *testing.T) {
 		t.Errorf("Same secret signature signing key twice")
 	}
 }
+
+func TestSign(t *testing.T) {
+	tt := time.Now()
+	pk, sk, err := GenerateKey(rand.Reader, tt)
+	if err != nil {
+		t.Error(err)
+	}
+	msg := []byte("I will not sign this message.")
+	if ! pk.Verify(sk.Sign(msg)) {
+		t.Error("Signature verification failed")
+	}
+}
+
+func TestForge(t *testing.T) {
+	tt := time.Now()
+	pk, sk, err := GenerateKey(rand.Reader, tt)
+	if err != nil {
+		t.Error(err)
+	}
+	msg := []byte("I will not sign this message.")
+	signed := sk.Sign(msg)
+	signed.Message = []byte("I will sign this message.")
+	if pk.Verify(signed) {
+		t.Error("Forged signature passed verification")
+	}
+}

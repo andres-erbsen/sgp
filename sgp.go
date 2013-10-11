@@ -86,10 +86,22 @@ type Entity struct {
 type SecretKey struct {
 	sign *[ed25519.PrivateKeySize]byte
 	enc  *[32]byte
-	entity *Entity
+	Entity *Entity
 }
 
-func GenerateKey(rand io.Reader, now time.Time) (e Entity, sk SecretKey, err error) {
+func (sk *SecretKey) Sign(bytes []byte) *Signed {
+	if len(sk.Entity.SigKeys) != 1 {
+		panic("Inconsistent secret key")
+	}
+	return &Signed{
+		Message:   bytes,
+		SigAlgos:  []SigAlgo{SigAlgo_ED25519},
+		SigKeyids: [][]byte{sk.Entity.SigKeys[0].Fingerprint},
+		Sigs:      [][]byte{ed25519.Sign(sk.sign, bytes)[:]},
+	}
+}
+
+func GenerateKey(rand io.Reader, now time.Time) (e *Entity, sk SecretKey, err error) {
 	var pk_sign, pk_enc *[32]byte
 	pk_sign, sk.sign, err = ed25519.GenerateKey(rand)
 	if err != nil {
@@ -116,17 +128,18 @@ func GenerateKey(rand io.Reader, now time.Time) (e Entity, sk SecretKey, err err
 		return
 	}
 	e_msg := &Signed{
-		Message:  pkd_bytes,
-		SigAlgos: []SigAlgo{SigAlgo_ED25519},
-		Sigs:     [][]byte{ed25519.Sign(sk.sign, pkd_bytes)[:]},
+		Message:   pkd_bytes,
+		SigAlgos:  []SigAlgo{SigAlgo_ED25519},
+		Sigs:      [][]byte{ed25519.Sign(sk.sign, pkd_bytes)[:]},
 	}
 
 	e_bytes, err := proto.Marshal(e_msg)
 	if err != nil {
 		return
 	}
+	sk.Entity = new(Entity)
+	e = sk.Entity
 	err = e.Parse(e_bytes)
-	sk.entity = &e
 	return
 }
 
@@ -175,4 +188,25 @@ func (e *Entity) Parse(e_bytes []byte) (err error) {
 
 	e.Bytes = e_bytes
 	return
+}
+
+func (e *Entity) Verify(sigmsg *Signed) bool {
+	if len(sigmsg.SigKeyids) == 0 || len(sigmsg.SigKeyids) != len(sigmsg.Sigs) {
+		return false
+	}
+	for sig_index, signerid := range sigmsg.SigKeyids {
+		for _, pk := range e.SigKeys {
+			equal := true
+			for i:=0; i<len(signerid) && i< len(pk.Fingerprint); i++ {
+				if signerid[i] != pk.Fingerprint[i] {
+					equal = false
+					break
+				}
+			}
+			if equal {
+				return pk.Verify(sigmsg.Message, sigmsg.Sigs[sig_index])
+			}
+		}
+	}
+	return false
 }
