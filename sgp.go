@@ -194,8 +194,14 @@ func (e *Entity) Verify(sigmsg *Signed) bool {
 	if len(sigmsg.SigKeyids) == 0 || len(sigmsg.SigKeyids) != len(sigmsg.Sigs) {
 		return false
 	}
+	if len(sigmsg.SigAlgos ) != len(sigmsg.Sigs) {
+		return false
+	}
 	for sig_index, signerid := range sigmsg.SigKeyids {
 		for _, pk := range e.SigKeys {
+			if sigmsg.SigAlgos[sig_index] != pk.Algo {
+				continue
+			}
 			equal := true
 			for i:=0; i<len(signerid) && i< len(pk.Fingerprint); i++ {
 				if signerid[i] != pk.Fingerprint[i] {
