@@ -101,6 +101,28 @@ func (sk *SecretKey) Sign(bytes []byte) *Signed {
 	}
 }
 
+func (sk *SecretKey) Serialize() []byte {
+	return append(append(sk.sign[:], sk.enc[:]...), sk.Entity.Bytes...)
+}
+
+func (sk *SecretKey) Parse(sk_bytes []byte) (err error) {
+	if len(sk_bytes) < ed25519.PrivateKeySize+32 {
+		return errors.New("Secret key bytes too short")
+	}
+	sk.Entity = &Entity{}
+	err = sk.Entity.Parse(sk_bytes[ed25519.PrivateKeySize+32:])
+	if err != nil {
+		return
+	}
+	sk.sign = &[ed25519.PrivateKeySize]byte{}
+	sk.enc = &[32]byte{}
+	copy(sk.sign[:], sk_bytes[:ed25519.PrivateKeySize])
+	copy(sk.enc[:], sk_bytes[ed25519.PrivateKeySize:ed25519.PrivateKeySize+32])
+	err = nil
+	return
+}
+
+
 func GenerateKey(rand io.Reader, now time.Time) (e *Entity, sk SecretKey, err error) {
 	var pk_sign, pk_enc *[32]byte
 	pk_sign, sk.sign, err = ed25519.GenerateKey(rand)

@@ -33,9 +33,6 @@ message PublicKeyData {
 
 // Attribution is usually found in a Signed message, forming Certification
 message Attribution {
-	// Either
-		optional SigAlgo sig_algo = 1;
-		optional PkEncAlgo enc_algo = 2;
-	required bytes pubkey = 3;
-	required bytes name = 4;
+	required bytes pubkey = 1;
+	required bytes name = 2;
 }

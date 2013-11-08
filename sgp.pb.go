@@ -210,31 +210,14 @@ func (m *PublicKeyData) GetTime() int64 {
 
 // Attribution is usually found in a Signed message, forming Certification
 type Attribution struct {
-	// Either
-	SigAlgo          *SigAlgo   `protobuf:"varint,1,opt,name=sig_algo,enum=SigAlgo" json:"sig_algo,omitempty"`
-	EncAlgo          *PkEncAlgo `protobuf:"varint,2,opt,name=enc_algo,enum=PkEncAlgo" json:"enc_algo,omitempty"`
-	Pubkey           []byte     `protobuf:"bytes,3,req,name=pubkey" json:"pubkey,omitempty"`
-	Name             []byte     `protobuf:"bytes,4,req,name=name" json:"name,omitempty"`
-	XXX_unrecognized []byte     `json:"-"`
+	Pubkey           []byte `protobuf:"bytes,1,req,name=pubkey" json:"pubkey,omitempty"`
+	Name             []byte `protobuf:"bytes,2,req,name=name" json:"name,omitempty"`
+	XXX_unrecognized []byte `json:"-"`
 }
 
 func (m *Attribution) Reset()         { *m = Attribution{} }
 func (m *Attribution) String() string { return proto.CompactTextString(m) }
 func (*Attribution) ProtoMessage()    {}
-
-func (m *Attribution) GetSigAlgo() SigAlgo {
-	if m != nil && m.SigAlgo != nil {
-		return *m.SigAlgo
-	}
-	return 0
-}
-
-func (m *Attribution) GetEncAlgo() PkEncAlgo {
-	if m != nil && m.EncAlgo != nil {
-		return *m.EncAlgo
-	}
-	return 0
-}
 
 func (m *Attribution) GetPubkey() []byte {
 	if m != nil {
