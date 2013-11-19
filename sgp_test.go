@@ -32,8 +32,11 @@ func TestSign(t *testing.T) {
 		t.Error(err)
 	}
 	msg := []byte("I will not sign this message.")
-	if ! pk.Verify(sk.Sign(msg)) {
+	if ! pk.VerifyPb(sk.SignPb(msg)) {
 		t.Error("Signature verification failed")
+	}
+	if ! pk.Verify(sk.Sign(msg)) {
+		t.Error("Serialized signature verification failed")
 	}
 	if ! sk.Entity.Verify(sk.Sign(msg)) {
 		t.Error("Signature verification failed")

@@ -6,6 +6,7 @@ import (
 	"code.google.com/p/goprotobuf/proto"
 	"github.com/agl/ed25519"
 	"io"
+	"io/ioutil"
 	"time"
 	"errors"
 )
@@ -89,7 +90,7 @@ type SecretKey struct {
 	Entity *Entity
 }
 
-func (sk *SecretKey) Sign(bytes []byte) *Signed {
+func (sk *SecretKey) SignPb(bytes []byte) *Signed {
 	if len(sk.Entity.SigKeys) != 1 {
 		panic("Inconsistent secret key")
 	}
@@ -99,6 +100,15 @@ func (sk *SecretKey) Sign(bytes []byte) *Signed {
 		SigKeyids: [][]byte{sk.Entity.SigKeys[0].Fingerprint},
 		Sigs:      [][]byte{ed25519.Sign(sk.sign, bytes)[:]},
 	}
+}
+
+func (sk *SecretKey) Sign(bytes []byte) []byte {
+	signed := sk.SignPb(bytes)
+	signed_bytes, err := proto.Marshal(signed)
+	if err != nil {
+		panic(err)
+	}
+	return signed_bytes
 }
 
 func (sk *SecretKey) Serialize() []byte {
@@ -119,6 +129,15 @@ func (sk *SecretKey) Parse(sk_bytes []byte) (err error) {
 	copy(sk.sign[:], sk_bytes[:ed25519.PrivateKeySize])
 	copy(sk.enc[:], sk_bytes[ed25519.PrivateKeySize:ed25519.PrivateKeySize+32])
 	err = nil
+	return
+}
+
+func LoadSecretKeyFromFile(filename string) (sk SecretKey, err error) {
+	sk_bytes, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return
+	}
+	err = sk.Parse(sk_bytes)
 	return
 }
 
@@ -212,7 +231,7 @@ func (e *Entity) Parse(e_bytes []byte) (err error) {
 	return
 }
 
-func (e *Entity) Verify(sigmsg *Signed) bool {
+func (e *Entity) VerifyPb(sigmsg *Signed) bool {
 	if len(sigmsg.SigKeyids) == 0 || len(sigmsg.SigKeyids) != len(sigmsg.Sigs) {
 		return false
 	}
@@ -237,4 +256,13 @@ func (e *Entity) Verify(sigmsg *Signed) bool {
 		}
 	}
 	return false
+}
+
+func (e *Entity) Verify(signed_bytes []byte) bool {
+	signed:= &Signed{}
+	err := proto.Unmarshal(signed_bytes, signed)
+	if err != nil {
+		return false
+	}
+	return e.VerifyPb(signed)
 }
