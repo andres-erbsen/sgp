@@ -50,9 +50,9 @@ func TestForge(t *testing.T) {
 		t.Error(err)
 	}
 	msg := []byte("I will not sign this message.")
-	signed := sk.Sign(msg)
+	signed := sk.SignPb(msg)
 	signed.Message = []byte("I will sign this message.")
-	if pk.Verify(signed) {
+	if pk.VerifyPb(signed) {
 		t.Error("Forged signature passed verification")
 	}
 }

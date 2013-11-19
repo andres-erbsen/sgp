@@ -33,10 +33,6 @@ func main() {
 	if ! sk.Entity.Verify(cert) {
 		log.Fatal("Signature verification failed")
 	}
-	cert_bytes, err := proto.Marshal(cert)
-	if err != nil {
-		log.Fatal(err)
-	}
-	os.Stdout.Write(cert_bytes)
+	os.Stdout.Write(cert)
 }
 
