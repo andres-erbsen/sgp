@@ -35,10 +35,10 @@ func TestSign(t *testing.T) {
 	if ! pk.VerifyPb(sk.SignPb(msg)) {
 		t.Error("Signature verification failed")
 	}
-	if ! pk.Verify(sk.Sign(msg)) {
+	if ! pk.VerifyPb(sk.SignPb(msg)) {
 		t.Error("Serialized signature verification failed")
 	}
-	if ! sk.Entity.Verify(sk.Sign(msg)) {
+	if ! sk.Entity.VerifyPb(sk.SignPb(msg)) {
 		t.Error("Signature verification failed")
 	}
 }
@@ -69,16 +69,16 @@ func TestSerializeParseAnsSign(t *testing.T) {
 	pk2.Parse(pk.Bytes)
 
 	msg := []byte("I will not sign this message.")
-	if ! pk2.Verify(sk.Sign(msg)) {
-		t.Error("pk2.Verify(sk.Sign(msg)) failed")
+	if ! pk2.VerifyPb(sk.SignPb(msg)) {
+		t.Error("pk2.VerifyPb(sk.SignPb(msg)) failed")
 	}
-	if ! pk.Verify(sk2.Sign(msg)) {
-		t.Error("pk.Verify(sk2.Sign(msg)) failed")
+	if ! pk.VerifyPb(sk2.SignPb(msg)) {
+		t.Error("pk.VerifyPb(sk2.SignPb(msg)) failed")
 	}
-	if ! sk2.Entity.Verify(sk2.Sign(msg)) {
-		t.Error("sk2.Entity.Verify(sk2.Sign(msg)) failed")
+	if ! sk2.Entity.VerifyPb(sk2.SignPb(msg)) {
+		t.Error("sk2.Entity.VerifyPb(sk2.SignPb(msg)) failed")
 	}
-	if ! sk.Entity.Verify(sk2.Sign(msg)) {
-		t.Error("sk.Entity.Verify(sk2.Sign(msg)) failed")
+	if ! sk.Entity.VerifyPb(sk2.SignPb(msg)) {
+		t.Error("sk.Entity.VerifyPb(sk2.SignPb(msg)) failed")
 	}
 }
