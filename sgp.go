@@ -258,16 +258,17 @@ func (e *Entity) VerifyPb(sigmsg *Signed) bool {
 	return false
 }
 
-func (e *Entity) Verify(signed_bytes []byte) ([]byte, bool) {
+func (e *Entity) Verify(signed_bytes []byte) ([]byte, error) {
+	errfailed := errors.New("Signature verification failed")
 	signed:= &Signed{}
 	err := proto.Unmarshal(signed_bytes, signed)
 	if err != nil {
-		return []byte{}, false
+		return []byte{}, errfailed
 	}
 	ok := e.VerifyPb(signed)
 	if ok {
-		return signed.Message, true
+		return signed.Message, nil
 	} else {
-		return []byte{}, false
+		return []byte{}, errfailed
 	}
 }
