@@ -30,11 +30,13 @@ const OUR_SIGKEY_INDEX = 0
 
 var errVerifyFailed = errors.New("Signature verification failed")
 
-
 func (pk *PublicKey) GetFingerprint() []byte {
-	h := sha3.NewKeccak512()
-	h.Write(pk.Key)
-	return h.Sum(nil)[:]
+	if pk.Fingerprint == nil {
+		h := sha3.NewKeccak512()
+		h.Write(pk.Key)
+		pk.Fingerprint = h.Sum(nil)[:]
+	}
+	return pk.Fingerprint
 }
 
 type SecretKey struct {
@@ -196,14 +198,15 @@ func (e *Entity) Parse(e_bytes []byte) (err error) {
 
 	i := 0
 	for _, pk := range ed.PublicKeys {
+		pk.Fingerprint = nil // do not trust what came from the network
 		if pk.CanSign(SIGN_TAG_SELFSIGN) {
 			if pk.verifySignature(e_msg.Message, e_msg.Sigs[i], SIGN_TAG_SELFSIGN) {
 				e.Fingerprints = append(e.Fingerprints, pk.GetFingerprint())
 			} else {
 				return errVerifyFailed
 			}
-		}
 		i++
+		}
 	}
 	e.PublicKeys = ed.PublicKeys
 

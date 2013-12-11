@@ -87,6 +87,7 @@ type PublicKey struct {
 	Algo                    *PublickeyAlgorithm `protobuf:"varint,3,req,name=algo,enum=PublickeyAlgorithm" json:"algo,omitempty"`
 	Key                     []byte              `protobuf:"bytes,4,req,name=key" json:"key,omitempty"`
 	XXX_unrecognized        []byte              `json:"-"`
+	Fingerprint             []byte
 }
 
 func (m *PublicKey) Reset()         { *m = PublicKey{} }
