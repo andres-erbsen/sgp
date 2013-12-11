@@ -9,79 +9,32 @@ import (
 	"io/ioutil"
 	"time"
 	"errors"
+	"bytes"
 )
 
-type EncKey struct {
-	Algo        PkEncAlgo
-	Fingerprint []byte
-	Key         interface{}
-}
 
-func (k *EncKey) Parse(algo PkEncAlgo, bytes []byte) (error) {
-	switch {
-	case algo == PkEncAlgo_NACL:
-		if len(bytes) != 32 {
-			return errors.New("PkEncAlgo_NACL public key must be 32 bytes")
-		}
-		h := sha3.NewKeccak512()
-		h.Write(bytes)
-		k.Fingerprint = h.Sum(nil)[:]
+const (
+	SIGN_TAG_WILDCARD = uint64(iota)
+	SIGN_TAG_SELFSIGN
+	SIGN_TAG_LOCALTESING2 = 0xfffffffffffffffe
+	SIGN_TAG_LOCALTESING = 0xffffffffffffffff
+)
 
-		pk := new([32]byte)
-		copy(pk[:32],bytes)
-		k.Key = pk
-	default:
-		return errors.New("Unknown public-key encryption algorithm")
-	}
-	k.Algo = algo
-	return nil
-}
+const ( // enum PublicKey::Usage
+	PublicKey_SIGNING = uint32(1<<iota)
+	PublicKey_PUBLICKEY_ENCRYPTION
+	PublicKey_KEY_AGREEMENT
+)
 
-type SigKey struct {
-	Algo        SigAlgo
-	Fingerprint []byte
-	Key         interface{}
-}
+const OUR_SIGKEY_INDEX = 0
 
-func (k *SigKey) Parse(algo SigAlgo, bytes []byte) (error) {
-	switch {
-	case algo == SigAlgo_ED25519:
-		if len(bytes) != 32 {
-			return errors.New("Ed25519 public key must be 32 bytes")
-		}
-		h := sha3.NewKeccak512()
-		h.Write(bytes)
-		k.Fingerprint = h.Sum(nil)[:]
+var errVerifyFailed = errors.New("Signature verification failed")
 
-		pk := new([32]byte)
-		copy(pk[:32],bytes)
-		k.Key = pk
-	default:
-		return errors.New("Unknown signature algorithm")
-	}
-	k.Algo = algo
-	return nil
-}
 
-func (k *SigKey) Verify(message, signature []byte) bool {
-	switch {
-	case k.Algo == SigAlgo_ED25519:
-		if len(signature) != 64 {
-			return false
-		}
-		sig := &[64]byte{}
-		copy(sig[:64],signature)
-		return ed25519.Verify(k.Key.(*[32]byte), message, sig)
-	default:
-		return false
-	}
-}
-
-type Entity struct {
-	SigKeys      []*SigKey
-	EncKeys      []*EncKey
-	CreationTime time.Time
-	Bytes        []byte
+func (pk *PublicKey) GetFingerprint() []byte {
+	h := sha3.NewKeccak512()
+	h.Write(pk.Key)
+	return h.Sum(nil)[:]
 }
 
 type SecretKey struct {
@@ -90,21 +43,19 @@ type SecretKey struct {
 	Entity *Entity
 }
 
-func (sk *SecretKey) SignPb(bytes []byte) *Signed {
-	if len(sk.Entity.SigKeys) != 1 {
-		panic("Inconsistent secret key")
-	}
+func (sk *SecretKey) SignPb(message []byte, tag uint64) *Signed {
+	// TODO: should this check whether the public key is marked
+	// as authorized to sign under this tag
+	tagged_msg := append(proto.EncodeVarint(tag), message...)
 	return &Signed{
-		Message:   bytes,
-		SigAlgos:  []SigAlgo{SigAlgo_ED25519},
-		SigKeyids: [][]byte{sk.Entity.SigKeys[0].Fingerprint},
-		Sigs:      [][]byte{ed25519.Sign(sk.sign, bytes)[:]},
+		Message:   message,
+		KeyIds:    [][]byte{sk.Entity.PublicKeys[OUR_SIGKEY_INDEX].GetFingerprint()},
+		Sigs:      [][]byte{ed25519.Sign(sk.sign, tagged_msg)[:]},
 	}
 }
 
-func (sk *SecretKey) Sign(bytes []byte) []byte {
-	signed := sk.SignPb(bytes)
-	signed_bytes, err := proto.Marshal(signed)
+func (sk *SecretKey) Sign(message []byte, tag uint64) []byte {
+	signed_bytes, err := proto.Marshal(sk.SignPb(message, tag))
 	if err != nil {
 		panic(err)
 	}
@@ -141,38 +92,56 @@ func LoadSecretKeyFromFile(filename string) (sk SecretKey, err error) {
 	return
 }
 
+type Entity struct {
+	PublicKeys   []*PublicKey
+	Fingerprints [][]byte
+	CreationTime time.Time
+	ExpirationTime time.Time
+	Bytes        []byte
+}
 
-func GenerateKey(rand io.Reader, now time.Time) (e *Entity, sk SecretKey, err error) {
-	var pk_sign, pk_enc *[32]byte
-	pk_sign, sk.sign, err = ed25519.GenerateKey(rand)
+func GenerateKey(rand io.Reader, now time.Time, lifetime time.Duration) (e *Entity, sk SecretKey, err error) {
+	var pk_sign_bs, pk_enc_bs *[32]byte
+	pk_sign_bs, sk.sign, err = ed25519.GenerateKey(rand)
+	if err != nil {
+		return
+	}
+	_PublicKey_SIGNING := PublicKey_SIGNING
+	_PublickeyAlgorithm_ED25519 := PublickeyAlgorithm_ED25519
+	pk_sign := &PublicKey{Usage: &_PublicKey_SIGNING,
+		AuthorizedSignatureTags: []uint64{SIGN_TAG_WILDCARD},
+		Algo: &_PublickeyAlgorithm_ED25519,
+		Key: pk_sign_bs[:]}
+
+	pk_enc_bs, sk.enc, err = box.GenerateKey(rand)
 	if err != nil {
 		return
 	}
 
-	pk_enc, sk.enc, err = box.GenerateKey(rand)
-	if err != nil {
-		return
-	}
+	u := PublicKey_KEY_AGREEMENT | PublicKey_PUBLICKEY_ENCRYPTION
+	_PublickeyAlgorithm_CURVE25519 := PublickeyAlgorithm_CURVE25519
+	pk_enc := &PublicKey{Algo: &_PublickeyAlgorithm_CURVE25519,
+		Usage: &u,
+		Key: pk_enc_bs[:]}
 
 	// Self-sign the key
 	t := new(int64)
 	*t = now.Unix()
-	pkd := &PublicKeyData{
-		SigAlgos: []SigAlgo{SigAlgo_ED25519},
-		EncAlgos: []PkEncAlgo{PkEncAlgo_NACL},
-		SigKeys:  [][]byte{pk_sign[:]},
-		EncKeys:  [][]byte{pk_enc[:]},
-		Time:     t,
+	d := new(int64)
+	*d = int64(lifetime.Seconds())
+	ed := &EntityData{
+		PublicKeys: []*PublicKey{pk_sign, pk_enc},
+		Time:       t,
+		Lifetime:   d,
 	}
-	pkd_bytes, err := proto.Marshal(pkd)
+	ed_bytes, err := proto.Marshal(ed)
 	if err != nil {
 		return
 	}
+	tagged_msg := append(proto.EncodeVarint(SIGN_TAG_SELFSIGN), ed_bytes...)
 	e_msg := &Signed{
-		Message:   pkd_bytes,
-		SigAlgos:  []SigAlgo{SigAlgo_ED25519},
-		Sigs:      [][]byte{ed25519.Sign(sk.sign, pkd_bytes)[:]},
-	}
+		Message: ed_bytes,
+		Sigs:    [][]byte{ed25519.Sign(sk.sign, tagged_msg)[:]}}
 
 	e_bytes, err := proto.Marshal(e_msg)
 	if err != nil {
@@ -184,91 +153,94 @@ func GenerateKey(rand io.Reader, now time.Time) (e *Entity, sk SecretKey, err er
 	return
 }
 
+func (pk *PublicKey) RawVerify (message, signature []byte) bool {
+	switch *pk.Algo {
+	case PublickeyAlgorithm_ED25519:
+		pk_arr := new([ed25519.PublicKeySize]byte)
+		copy(pk_arr[:], pk.Key)
+		sig_arr := new([ed25519.SignatureSize]byte)
+		copy(sig_arr[:], signature)
+		return ed25519.Verify(pk_arr, message, sig_arr)
+	default: return false
+	}
+}
+
+func (pk *PublicKey) CanSign(tag uint64) bool {
+	if *pk.Usage & PublicKey_SIGNING == 0 {
+		return false
+	}
+	for _, allowed_tag := range pk.AuthorizedSignatureTags {
+		if tag == allowed_tag || allowed_tag == SIGN_TAG_WILDCARD {
+			return true
+		}
+	}
+	return false
+}
+
+func (pk *PublicKey) verifySignature (message, signature []byte, tag uint64) bool {
+	tagged_msg := append(proto.EncodeVarint(tag), message...)
+	return pk.CanSign(tag) && pk.RawVerify(tagged_msg, signature)
+}
+
 func (e *Entity) Parse(e_bytes []byte) (err error) {
 	e_msg := &Signed{}
 	err = proto.Unmarshal(e_bytes, e_msg)
 	if err != nil {
 		return
 	}
-	pkd := &PublicKeyData{}
-	err = proto.Unmarshal(e_msg.Message, pkd)
+	ed := &EntityData{}
+	err = proto.Unmarshal(e_msg.Message, ed)
 	if err != nil {
 		return
 	}
 
-	if  len(pkd.EncKeys) != len(pkd.EncAlgos) {
-		err = errors.New("PublicKeyData needs exactly one enc key per enc algo")
-	}
-	if  len(pkd.SigKeys) != len(pkd.SigAlgos) {
-		err = errors.New("PublicKeyData needs exactly one sig key per sig algo")
-	}
-	if  len(pkd.SigKeys) != len(e_msg.Sigs) {
-		err = errors.New("PublicKey needs exactly one signature per sig key")
-	}
-
-	for i:=0; i<len(pkd.SigAlgos); i++ {
-		k := new(SigKey)
-		k.Parse(pkd.SigAlgos[i], pkd.SigKeys[i])
-		if k.Verify(e_msg.Message, e_msg.Sigs[i]) {
-			e.SigKeys = append(e.SigKeys, k)
+	i := 0
+	for _, pk := range ed.PublicKeys {
+		if pk.CanSign(SIGN_TAG_SELFSIGN) {
+			if pk.verifySignature(e_msg.Message, e_msg.Sigs[i], SIGN_TAG_SELFSIGN) {
+				e.Fingerprints = append(e.Fingerprints, pk.GetFingerprint())
+			} else {
+				return errVerifyFailed
+			}
 		}
+		i++
 	}
-	if len(e.SigKeys) == 0 {
-		return errors.New("No useable signing keys found")
-	}
+	e.PublicKeys = ed.PublicKeys
 
-	for i:=0; i<len(pkd.EncAlgos); i++ {
-		k := new(EncKey)
-		k.Parse(pkd.EncAlgos[i], pkd.EncKeys[i])
-		e.EncKeys = append(e.EncKeys, k)
-	}
-
-	if pkd.Time != nil {
-		e.CreationTime = time.Unix(*pkd.Time, 0)
+	if ed.Time != nil {
+		e.CreationTime = time.Unix(*ed.Time, 0)
+		if ed.Lifetime != nil {
+			e.ExpirationTime = e.CreationTime.Add(time.Duration(*ed.Lifetime) * time.Second)
+		}
 	}
 
 	e.Bytes = e_bytes
 	return
 }
 
-func (e *Entity) VerifyPb(sigmsg *Signed) bool {
-	if len(sigmsg.SigKeyids) == 0 || len(sigmsg.SigKeyids) != len(sigmsg.Sigs) {
-		return false
-	}
-	if len(sigmsg.SigAlgos ) != len(sigmsg.Sigs) {
-		return false
-	}
-	for sig_index, signerid := range sigmsg.SigKeyids {
-		for _, pk := range e.SigKeys {
-			if sigmsg.SigAlgos[sig_index] != pk.Algo {
-				continue
-			}
-			equal := true
-			for i:=0; i<len(signerid) && i< len(pk.Fingerprint); i++ {
-				if signerid[i] != pk.Fingerprint[i] {
-					equal = false
-					break
-				}
-			}
-			if equal {
-				return pk.Verify(sigmsg.Message, sigmsg.Sigs[sig_index])
+func (e *Entity) VerifyPb(sigmsg *Signed, tag uint64) bool {
+	for i, signerid := range sigmsg.KeyIds {
+		for _, pk := range e.PublicKeys {
+			if bytes.Equal(signerid, pk.GetFingerprint()) &&
+        	   pk.verifySignature(sigmsg.Message, sigmsg.Sigs[i], tag) {
+				return true
 			}
 		}
 	}
 	return false
 }
 
-func (e *Entity) Verify(signed_bytes []byte) ([]byte, error) {
-	errfailed := errors.New("Signature verification failed")
+func (e *Entity) Verify(signed_bytes []byte, tag uint64) ([]byte, error) {
 	signed:= &Signed{}
 	err := proto.Unmarshal(signed_bytes, signed)
 	if err != nil {
-		return []byte{}, errfailed
+		return []byte{}, errVerifyFailed
 	}
-	ok := e.VerifyPb(signed)
+	ok := e.VerifyPb(signed, tag)
 	if ok {
 		return signed.Message, nil
 	} else {
-		return []byte{}, errfailed
+		return []byte{}, errVerifyFailed
 	}
 }
+

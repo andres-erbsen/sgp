@@ -13,118 +13,47 @@ var _ = proto.Marshal
 var _ = &json.SyntaxError{}
 var _ = math.Inf
 
-type PkEncAlgo int32
+type PublickeyAlgorithm int32
 
 const (
-	PkEncAlgo_NACL PkEncAlgo = 1
+	PublickeyAlgorithm_CURVE25519 PublickeyAlgorithm = 1
+	PublickeyAlgorithm_ED25519    PublickeyAlgorithm = 2
 )
 
-var PkEncAlgo_name = map[int32]string{
-	1: "NACL",
+var PublickeyAlgorithm_name = map[int32]string{
+	1: "CURVE25519",
+	2: "ED25519",
 }
-var PkEncAlgo_value = map[string]int32{
-	"NACL": 1,
+var PublickeyAlgorithm_value = map[string]int32{
+	"CURVE25519": 1,
+	"ED25519":    2,
 }
 
-func (x PkEncAlgo) Enum() *PkEncAlgo {
-	p := new(PkEncAlgo)
+func (x PublickeyAlgorithm) Enum() *PublickeyAlgorithm {
+	p := new(PublickeyAlgorithm)
 	*p = x
 	return p
 }
-func (x PkEncAlgo) String() string {
-	return proto.EnumName(PkEncAlgo_name, int32(x))
+func (x PublickeyAlgorithm) String() string {
+	return proto.EnumName(PublickeyAlgorithm_name, int32(x))
 }
-func (x PkEncAlgo) MarshalJSON() ([]byte, error) {
+func (x PublickeyAlgorithm) MarshalJSON() ([]byte, error) {
 	return json.Marshal(x.String())
 }
-func (x *PkEncAlgo) UnmarshalJSON(data []byte) error {
-	value, err := proto.UnmarshalJSONEnum(PkEncAlgo_value, data, "PkEncAlgo")
+func (x *PublickeyAlgorithm) UnmarshalJSON(data []byte) error {
+	value, err := proto.UnmarshalJSONEnum(PublickeyAlgorithm_value, data, "PublickeyAlgorithm")
 	if err != nil {
 		return err
 	}
-	*x = PkEncAlgo(value)
-	return nil
-}
-
-type SigAlgo int32
-
-const (
-	SigAlgo_ED25519 SigAlgo = 1
-)
-
-var SigAlgo_name = map[int32]string{
-	1: "ED25519",
-}
-var SigAlgo_value = map[string]int32{
-	"ED25519": 1,
-}
-
-func (x SigAlgo) Enum() *SigAlgo {
-	p := new(SigAlgo)
-	*p = x
-	return p
-}
-func (x SigAlgo) String() string {
-	return proto.EnumName(SigAlgo_name, int32(x))
-}
-func (x SigAlgo) MarshalJSON() ([]byte, error) {
-	return json.Marshal(x.String())
-}
-func (x *SigAlgo) UnmarshalJSON(data []byte) error {
-	value, err := proto.UnmarshalJSONEnum(SigAlgo_value, data, "SigAlgo")
-	if err != nil {
-		return err
-	}
-	*x = SigAlgo(value)
-	return nil
-}
-
-type Boxed struct {
-	EncAlgo          *PkEncAlgo `protobuf:"varint,1,opt,name=enc_algo,enum=PkEncAlgo" json:"enc_algo,omitempty"`
-	Sender           []byte     `protobuf:"bytes,2,opt,name=sender" json:"sender,omitempty"`
-	RecipientKeyid   []byte     `protobuf:"bytes,3,opt,name=recipient_keyid" json:"recipient_keyid,omitempty"`
-	Data             []byte     `protobuf:"bytes,4,req,name=data" json:"data,omitempty"`
-	XXX_unrecognized []byte     `json:"-"`
-}
-
-func (m *Boxed) Reset()         { *m = Boxed{} }
-func (m *Boxed) String() string { return proto.CompactTextString(m) }
-func (*Boxed) ProtoMessage()    {}
-
-func (m *Boxed) GetEncAlgo() PkEncAlgo {
-	if m != nil && m.EncAlgo != nil {
-		return *m.EncAlgo
-	}
-	return 0
-}
-
-func (m *Boxed) GetSender() []byte {
-	if m != nil {
-		return m.Sender
-	}
-	return nil
-}
-
-func (m *Boxed) GetRecipientKeyid() []byte {
-	if m != nil {
-		return m.RecipientKeyid
-	}
-	return nil
-}
-
-func (m *Boxed) GetData() []byte {
-	if m != nil {
-		return m.Data
-	}
+	*x = PublickeyAlgorithm(value)
 	return nil
 }
 
 type Signed struct {
-	Message          []byte    `protobuf:"bytes,1,req,name=message" json:"message,omitempty"`
-	SigAlgos         []SigAlgo `protobuf:"varint,2,rep,name=sig_algos,enum=SigAlgo" json:"sig_algos,omitempty"`
-	SigKeyids        [][]byte  `protobuf:"bytes,3,rep,name=sig_keyids" json:"sig_keyids,omitempty"`
-	Sigs             [][]byte  `protobuf:"bytes,4,rep,name=sigs" json:"sigs,omitempty"`
-	XXX_unrecognized []byte    `json:"-"`
+	Message          []byte   `protobuf:"bytes,1,req,name=message" json:"message,omitempty"`
+	KeyIds           [][]byte `protobuf:"bytes,3,rep,name=key_ids" json:"key_ids,omitempty"`
+	Sigs             [][]byte `protobuf:"bytes,4,rep,name=sigs" json:"sigs,omitempty"`
+	XXX_unrecognized []byte   `json:"-"`
 }
 
 func (m *Signed) Reset()         { *m = Signed{} }
@@ -138,16 +67,9 @@ func (m *Signed) GetMessage() []byte {
 	return nil
 }
 
-func (m *Signed) GetSigAlgos() []SigAlgo {
+func (m *Signed) GetKeyIds() [][]byte {
 	if m != nil {
-		return m.SigAlgos
-	}
-	return nil
-}
-
-func (m *Signed) GetSigKeyids() [][]byte {
-	if m != nil {
-		return m.SigKeyids
+		return m.KeyIds
 	}
 	return nil
 }
@@ -159,81 +81,78 @@ func (m *Signed) GetSigs() [][]byte {
 	return nil
 }
 
-// PublicKeyData is usually found in a Signed message, forming PublicKey
-type PublicKeyData struct {
-	SigAlgos         []SigAlgo   `protobuf:"varint,1,rep,name=sig_algos,enum=SigAlgo" json:"sig_algos,omitempty"`
-	EncAlgos         []PkEncAlgo `protobuf:"varint,2,rep,name=enc_algos,enum=PkEncAlgo" json:"enc_algos,omitempty"`
-	SigKeys          [][]byte    `protobuf:"bytes,3,rep,name=sig_keys" json:"sig_keys,omitempty"`
-	EncKeys          [][]byte    `protobuf:"bytes,4,rep,name=enc_keys" json:"enc_keys,omitempty"`
-	Time             *int64      `protobuf:"varint,5,opt,name=time" json:"time,omitempty"`
-	XXX_unrecognized []byte      `json:"-"`
+type PublicKey struct {
+	Usage                   *uint32             `protobuf:"varint,1,req,name=usage" json:"usage,omitempty"`
+	AuthorizedSignatureTags []uint64            `protobuf:"varint,2,rep,name=authorized_signature_tags" json:"authorized_signature_tags,omitempty"`
+	Algo                    *PublickeyAlgorithm `protobuf:"varint,3,req,name=algo,enum=PublickeyAlgorithm" json:"algo,omitempty"`
+	Key                     []byte              `protobuf:"bytes,4,req,name=key" json:"key,omitempty"`
+	XXX_unrecognized        []byte              `json:"-"`
 }
 
-func (m *PublicKeyData) Reset()         { *m = PublicKeyData{} }
-func (m *PublicKeyData) String() string { return proto.CompactTextString(m) }
-func (*PublicKeyData) ProtoMessage()    {}
+func (m *PublicKey) Reset()         { *m = PublicKey{} }
+func (m *PublicKey) String() string { return proto.CompactTextString(m) }
+func (*PublicKey) ProtoMessage()    {}
 
-func (m *PublicKeyData) GetSigAlgos() []SigAlgo {
+func (m *PublicKey) GetUsage() uint32 {
+	if m != nil && m.Usage != nil {
+		return *m.Usage
+	}
+	return 0
+}
+
+func (m *PublicKey) GetAuthorizedSignatureTags() []uint64 {
 	if m != nil {
-		return m.SigAlgos
+		return m.AuthorizedSignatureTags
 	}
 	return nil
 }
 
-func (m *PublicKeyData) GetEncAlgos() []PkEncAlgo {
+func (m *PublicKey) GetAlgo() PublickeyAlgorithm {
+	if m != nil && m.Algo != nil {
+		return *m.Algo
+	}
+	return 0
+}
+
+func (m *PublicKey) GetKey() []byte {
 	if m != nil {
-		return m.EncAlgos
+		return m.Key
 	}
 	return nil
 }
 
-func (m *PublicKeyData) GetSigKeys() [][]byte {
+type EntityData struct {
+	PublicKeys       []*PublicKey `protobuf:"bytes,1,rep,name=public_keys" json:"public_keys,omitempty"`
+	Time             *int64       `protobuf:"varint,2,opt,name=time" json:"time,omitempty"`
+	Lifetime         *int64       `protobuf:"varint,3,opt,name=lifetime" json:"lifetime,omitempty"`
+	XXX_unrecognized []byte       `json:"-"`
+}
+
+func (m *EntityData) Reset()         { *m = EntityData{} }
+func (m *EntityData) String() string { return proto.CompactTextString(m) }
+func (*EntityData) ProtoMessage()    {}
+
+func (m *EntityData) GetPublicKeys() []*PublicKey {
 	if m != nil {
-		return m.SigKeys
+		return m.PublicKeys
 	}
 	return nil
 }
 
-func (m *PublicKeyData) GetEncKeys() [][]byte {
-	if m != nil {
-		return m.EncKeys
-	}
-	return nil
-}
-
-func (m *PublicKeyData) GetTime() int64 {
+func (m *EntityData) GetTime() int64 {
 	if m != nil && m.Time != nil {
 		return *m.Time
 	}
 	return 0
 }
 
-// Attribution is usually found in a Signed message, forming Certification
-type Attribution struct {
-	Pubkey           []byte `protobuf:"bytes,1,req,name=pubkey" json:"pubkey,omitempty"`
-	Name             []byte `protobuf:"bytes,2,req,name=name" json:"name,omitempty"`
-	XXX_unrecognized []byte `json:"-"`
-}
-
-func (m *Attribution) Reset()         { *m = Attribution{} }
-func (m *Attribution) String() string { return proto.CompactTextString(m) }
-func (*Attribution) ProtoMessage()    {}
-
-func (m *Attribution) GetPubkey() []byte {
-	if m != nil {
-		return m.Pubkey
+func (m *EntityData) GetLifetime() int64 {
+	if m != nil && m.Lifetime != nil {
+		return *m.Lifetime
 	}
-	return nil
-}
-
-func (m *Attribution) GetName() []byte {
-	if m != nil {
-		return m.Name
-	}
-	return nil
+	return 0
 }
 
 func init() {
-	proto.RegisterEnum("PkEncAlgo", PkEncAlgo_name, PkEncAlgo_value)
-	proto.RegisterEnum("SigAlgo", SigAlgo_name, SigAlgo_value)
+	proto.RegisterEnum("PublickeyAlgorithm", PublickeyAlgorithm_name, PublickeyAlgorithm_value)
 }

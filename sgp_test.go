@@ -4,19 +4,20 @@ import "testing"
 import "crypto/rand"
 import "time"
 
+const d = time.Hour
+const tag = SIGN_TAG_LOCALTESING
+const tag2 = SIGN_TAG_LOCALTESING2
+
 func TestGenerateKey(t *testing.T) {
 	tt := time.Now()
-	pk, sk, err := GenerateKey(rand.Reader, tt)
+	pk, sk, err := GenerateKey(rand.Reader, tt, d)
 	if err != nil {
 		t.Error(err)
 	}
-	if len(pk.SigKeys) != 1 {
-		t.Errorf("Expected 1 signing key but got %d", len(pk.SigKeys))
+	if len(pk.PublicKeys) != 2 {
+		t.Errorf("Expected 2 public keys key but got %d", len(pk.PublicKeys))
 	}
-	if len(pk.EncKeys) != 1 {
-		t.Errorf("Expected 1 encryption key but got %d", len(pk.EncKeys))
-	}
-	_, sk2, err := GenerateKey(rand.Reader, tt)
+	_, sk2, err := GenerateKey(rand.Reader, tt, d)
 	if *sk.enc == *sk2.enc {
 		t.Errorf("Same secret decryption key twice")
 	}
@@ -27,39 +28,51 @@ func TestGenerateKey(t *testing.T) {
 
 func TestSign(t *testing.T) {
 	tt := time.Now()
-	pk, sk, err := GenerateKey(rand.Reader, tt)
+	pk, sk, err := GenerateKey(rand.Reader, tt, d)
 	if err != nil {
 		t.Error(err)
 	}
-	msg := []byte("I will not sign this message.")
-	if ! pk.VerifyPb(sk.SignPb(msg)) {
+	msg := []byte("I will sign this message.")
+	if ! pk.VerifyPb(sk.SignPb(msg,tag),tag) {
 		t.Error("Signature verification failed")
 	}
-	if ! pk.VerifyPb(sk.SignPb(msg)) {
+	if ! pk.VerifyPb(sk.SignPb(msg,tag),tag) {
 		t.Error("Serialized signature verification failed")
 	}
-	if ! sk.Entity.VerifyPb(sk.SignPb(msg)) {
+	if ! sk.Entity.VerifyPb(sk.SignPb(msg,tag),tag) {
 		t.Error("Signature verification failed")
 	}
 }
 
 func TestForge(t *testing.T) {
 	tt := time.Now()
-	pk, sk, err := GenerateKey(rand.Reader, tt)
+	pk, sk, err := GenerateKey(rand.Reader, tt, d)
 	if err != nil {
 		t.Error(err)
 	}
 	msg := []byte("I will not sign this message.")
-	signed := sk.SignPb(msg)
+	signed := sk.SignPb(msg,tag)
 	signed.Message = []byte("I will sign this message.")
-	if pk.VerifyPb(signed) {
+	if pk.VerifyPb(signed, tag) {
 		t.Error("Forged signature passed verification")
+	}
+}
+
+func TestForgeTag(t *testing.T) {
+	tt := time.Now()
+	pk, sk, err := GenerateKey(rand.Reader, tt, d)
+	if err != nil {
+		t.Error(err)
+	}
+	msg := []byte("I will sign this under tag 'tag'")
+	if pk.VerifyPb(sk.SignPb(msg,tag),tag2) {
+		t.Error("Tag-forged signature passed verification")
 	}
 }
 
 func TestSerializeParseAnsSign(t *testing.T) {
 	tt := time.Now()
-	pk, sk, err := GenerateKey(rand.Reader, tt)
+	pk, sk, err := GenerateKey(rand.Reader, tt, d)
 	if err != nil {
 		t.Error(err)
 	}
@@ -69,16 +82,16 @@ func TestSerializeParseAnsSign(t *testing.T) {
 	pk2.Parse(pk.Bytes)
 
 	msg := []byte("I will not sign this message.")
-	if ! pk2.VerifyPb(sk.SignPb(msg)) {
-		t.Error("pk2.VerifyPb(sk.SignPb(msg)) failed")
+	if ! pk2.VerifyPb(sk.SignPb(msg,tag),tag) {
+		t.Error("pk2.VerifyPb(sk.SignPb(msg,tag),tag) failed")
 	}
-	if ! pk.VerifyPb(sk2.SignPb(msg)) {
-		t.Error("pk.VerifyPb(sk2.SignPb(msg)) failed")
+	if ! pk.VerifyPb(sk2.SignPb(msg,tag),tag) {
+		t.Error("pk.VerifyPb(sk2.SignPb(msg,tag),tag) failed")
 	}
-	if ! sk2.Entity.VerifyPb(sk2.SignPb(msg)) {
-		t.Error("sk2.Entity.VerifyPb(sk2.SignPb(msg)) failed")
+	if ! sk2.Entity.VerifyPb(sk2.SignPb(msg,tag),tag) {
+		t.Error("sk2.Entity.VerifyPb(sk2.SignPb(msg,tag),tag) failed")
 	}
-	if ! sk.Entity.VerifyPb(sk2.SignPb(msg)) {
-		t.Error("sk.Entity.VerifyPb(sk2.SignPb(msg)) failed")
+	if ! sk.Entity.VerifyPb(sk2.SignPb(msg,tag),tag) {
+		t.Error("sk.Entity.VerifyPb(sk2.SignPb(msg,tag),tag) failed")
 	}
 }
