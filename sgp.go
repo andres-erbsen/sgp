@@ -2,9 +2,9 @@ package sgp
 
 import (
 	"code.google.com/p/go.crypto/nacl/box"
-	"code.google.com/p/go.crypto/sha3"
 	"code.google.com/p/goprotobuf/proto"
 	"github.com/agl/ed25519"
+	"crypto/sha256"
 	"io"
 	"io/ioutil"
 	"time"
@@ -30,9 +30,9 @@ const OUR_SIGKEY_INDEX = 0
 
 var errVerifyFailed = errors.New("Signature verification failed")
 
-func (pk *PublicKey) GetFingerprint() []byte {
+func (pk *PublicKey) ComputeFingerprint() []byte {
 	if pk.Fingerprint == nil {
-		h := sha3.NewKeccak512()
+		h := sha256.New()
 		h.Write(pk.Key)
 		pk.Fingerprint = h.Sum(nil)[:]
 	}
@@ -51,7 +51,7 @@ func (sk *SecretKey) SignPb(message []byte, tag uint64) *Signed {
 	tagged_msg := append(proto.EncodeVarint(tag), message...)
 	return &Signed{
 		Message:   message,
-		KeyIds:    [][]byte{sk.Entity.PublicKeys[OUR_SIGKEY_INDEX].GetFingerprint()},
+		KeyIds:    [][]byte{sk.Entity.PublicKeys[OUR_SIGKEY_INDEX].ComputeFingerprint()},
 		Sigs:      [][]byte{ed25519.Sign(sk.sign, tagged_msg)[:]},
 	}
 }
@@ -201,7 +201,7 @@ func (e *Entity) Parse(e_bytes []byte) (err error) {
 		pk.Fingerprint = nil // do not trust what came from the network
 		if pk.CanSign(SIGN_TAG_SELFSIGN) {
 			if pk.verifySignature(e_msg.Message, e_msg.Sigs[i], SIGN_TAG_SELFSIGN) {
-				e.Fingerprints = append(e.Fingerprints, pk.GetFingerprint())
+				e.Fingerprints = append(e.Fingerprints, pk.ComputeFingerprint())
 			} else {
 				return errVerifyFailed
 			}
@@ -224,7 +224,7 @@ func (e *Entity) Parse(e_bytes []byte) (err error) {
 func (e *Entity) VerifyPb(sigmsg *Signed, tag uint64) bool {
 	for i, signerid := range sigmsg.KeyIds {
 		for _, pk := range e.PublicKeys {
-			if bytes.Equal(signerid, pk.GetFingerprint()) &&
+			if bytes.Equal(signerid, pk.ComputeFingerprint()) &&
         	   pk.verifySignature(sigmsg.Message, sigmsg.Sigs[i], tag) {
 				return true
 			}

@@ -86,8 +86,8 @@ type PublicKey struct {
 	AuthorizedSignatureTags []uint64            `protobuf:"varint,2,rep,name=authorized_signature_tags" json:"authorized_signature_tags,omitempty"`
 	Algo                    *PublickeyAlgorithm `protobuf:"varint,3,req,name=algo,enum=PublickeyAlgorithm" json:"algo,omitempty"`
 	Key                     []byte              `protobuf:"bytes,4,req,name=key" json:"key,omitempty"`
+	Fingerprint             []byte              `protobuf:"bytes,5,opt,name=fingerprint" json:"fingerprint,omitempty"`
 	XXX_unrecognized        []byte              `json:"-"`
-	Fingerprint             []byte
 }
 
 func (m *PublicKey) Reset()         { *m = PublicKey{} }
@@ -118,6 +118,13 @@ func (m *PublicKey) GetAlgo() PublickeyAlgorithm {
 func (m *PublicKey) GetKey() []byte {
 	if m != nil {
 		return m.Key
+	}
+	return nil
+}
+
+func (m *PublicKey) GetFingerprint() []byte {
+	if m != nil {
+		return m.Fingerprint
 	}
 	return nil
 }

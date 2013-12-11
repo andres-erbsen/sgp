@@ -15,7 +15,7 @@ message PublicKey {
 	repeated uint64 authorized_signature_tags = 2;
 	required PublickeyAlgorithm algo = 3;
 	required bytes key = 4; // structure is algorithm-specific
-	required bytes fingerprint = 5;
+	optional bytes fingerprint = 5;
 }
 
 message EntityData { // usually signed
