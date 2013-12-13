@@ -3,6 +3,7 @@ package sgp
 import "testing"
 import "crypto/rand"
 import "time"
+import "bytes"
 
 const d = time.Hour
 const tag = SIGN_TAG_LOCALTESING
@@ -95,3 +96,42 @@ func TestSerializeParseAnsSign(t *testing.T) {
 		t.Error("sk.Entity.VerifyPb(sk2.SignPb(msg,tag),tag) failed")
 	}
 }
+
+func TestCanonicalKeyAgreement(t *testing.T) {
+	tt := time.Now()
+	pk, sk, err := GenerateKey(rand.Reader, tt, d)
+	if err != nil {
+		t.Error(err)
+	}
+	pk2, sk2, err := GenerateKey(rand.Reader, tt, d)
+	if err != nil {
+		t.Error(err)
+	}
+	pk3, _, err := GenerateKey(rand.Reader, tt, d)
+	if err != nil {
+		t.Error(err)
+	}
+
+	shared_1, err1 := sk.CanonicalKeyAgreement(pk2)
+	shared_2, err2 := sk2.CanonicalKeyAgreement(pk)
+	notshared, err3 := sk2.CanonicalKeyAgreement(pk3)
+	if err1 != nil {
+		t.Error(err2)
+	}
+	if err2 != nil {
+		t.Error(err2)
+	}
+	if err3 != nil {
+		t.Error(err3)
+	}
+	if ! bytes.Equal(shared_1, shared_2) {
+		t.Error("Canonical key agreement: results differ")
+	}
+	if bytes.Equal(shared_1, notshared) {
+		t.Error("Canonical key agreement: same result for different pairs")
+	}
+	if bytes.Equal(shared_2, notshared) {
+		t.Error("Canonical key agreement: same result for different pairs")
+	}
+}
+

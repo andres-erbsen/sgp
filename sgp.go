@@ -29,6 +29,7 @@ const ( // enum PublicKey::Usage
 const OUR_SIGKEY_INDEX = 0
 
 var errVerifyFailed = errors.New("Signature verification failed")
+var errNoPubKey = errors.New("No suitable public key available")
 
 func (pk *PublicKey) ComputeFingerprint() []byte {
 	if pk.Fingerprint == nil {
@@ -247,3 +248,67 @@ func (e *Entity) Verify(signed_bytes []byte, tag uint64) ([]byte, error) {
 	}
 }
 
+
+func (e *Entity) FirstKeyFor(usage uint32) *PublicKey {
+	for _, pk := range e.PublicKeys {
+		if *pk.Usage & usage != 0 {
+			return pk
+		}
+	}
+	return nil
+}
+
+func Compare(l, r *Entity) int {
+	var l_pk, r_pk *PublicKey
+	for _, l_pk = range l.PublicKeys {
+		if l_pk.CanSign(SIGN_TAG_SELFSIGN) {
+			break
+		}
+	}
+	for _, r_pk = range r.PublicKeys {
+		if r_pk.CanSign(SIGN_TAG_SELFSIGN) {
+			break
+		}
+	}
+	return bytes.Compare(l_pk.Key, r_pk.Key)
+}
+
+func (e *Entity) CanonicalKeyFor(usage uint32, r *Entity) *PublicKey {
+	l := e
+	if Compare(l, r) > 0 {
+		l,r = r,l
+	}
+	
+	for _, l_pk := range l.PublicKeys {
+		if *l_pk.Usage & usage == 0 {
+			continue
+		}
+		for _, r_pk := range r.PublicKeys {
+			if *r_pk.Algo != *l_pk.Algo || *r_pk.Usage & usage == 0 {
+				continue
+			}
+			if e == l {
+				return r_pk
+			} else {
+				return l_pk
+			}
+		}
+	}
+	return nil
+}
+
+func (sk *SecretKey) CanonicalKeyAgreement(r *Entity) ([]byte, error) {
+	r_pk := sk.Entity.CanonicalKeyFor(PublicKey_KEY_AGREEMENT, r)
+	if r_pk == nil {
+		return nil, errNoPubKey
+	}
+	switch *r_pk.Algo {
+	case PublickeyAlgorithm_CURVE25519:
+		k := new([32]byte)
+		pk := new([32]byte)
+		copy(pk[:], r_pk.Key)
+		box.Precompute(k, pk, sk.enc)
+		return (*k)[:], nil
+	}
+	return nil, errNoPubKey
+}
