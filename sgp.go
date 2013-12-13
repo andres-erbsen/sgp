@@ -4,6 +4,7 @@ import (
 	"code.google.com/p/go.crypto/nacl/box"
 	"code.google.com/p/goprotobuf/proto"
 	"github.com/agl/ed25519"
+	"code.google.com/p/go.crypto/curve25519"
 	"crypto/sha256"
 	"io"
 	"io/ioutil"
@@ -41,8 +42,8 @@ func (pk *PublicKey) ComputeFingerprint() []byte {
 }
 
 type SecretKey struct {
-	SigKey *[ed25519.PrivateKeySize]byte
-	EncKey  *[32]byte
+	sign *[ed25519.PrivateKeySize]byte
+	enc  *[32]byte
 	Entity *Entity
 }
 
@@ -53,7 +54,7 @@ func (sk *SecretKey) SignPb(message []byte, tag uint64) *Signed {
 	return &Signed{
 		Message:   message,
 		KeyIds:    [][]byte{sk.Entity.PublicKeys[OUR_SIGKEY_INDEX].ComputeFingerprint()},
-		Sigs:      [][]byte{ed25519.Sign(sk.SigKey, tagged_msg)[:]},
+		Sigs:      [][]byte{ed25519.Sign(sk.sign, tagged_msg)[:]},
 	}
 }
 
@@ -66,7 +67,7 @@ func (sk *SecretKey) Sign(message []byte, tag uint64) []byte {
 }
 
 func (sk *SecretKey) Serialize() []byte {
-	return append(append(sk.SigKey[:], sk.EncKey[:]...), sk.Entity.Bytes...)
+	return append(append(sk.sign[:], sk.enc[:]...), sk.Entity.Bytes...)
 }
 
 func (sk *SecretKey) Parse(sk_bytes []byte) (err error) {
@@ -78,10 +79,10 @@ func (sk *SecretKey) Parse(sk_bytes []byte) (err error) {
 	if err != nil {
 		return
 	}
-	sk.SigKey = &[ed25519.PrivateKeySize]byte{}
-	sk.EncKey = &[32]byte{}
-	copy(sk.SigKey[:], sk_bytes[:ed25519.PrivateKeySize])
-	copy(sk.EncKey[:], sk_bytes[ed25519.PrivateKeySize:ed25519.PrivateKeySize+32])
+	sk.sign = &[ed25519.PrivateKeySize]byte{}
+	sk.enc = &[32]byte{}
+	copy(sk.sign[:], sk_bytes[:ed25519.PrivateKeySize])
+	copy(sk.enc[:], sk_bytes[ed25519.PrivateKeySize:ed25519.PrivateKeySize+32])
 	err = nil
 	return
 }
@@ -103,30 +104,40 @@ type Entity struct {
 	Bytes        []byte
 }
 
-func GenerateKey(rand io.Reader, now time.Time, lifetime time.Duration) (e *Entity, sk SecretKey, err error) {
-	var pk_sign_bs, pk_enc_bs *[32]byte
-	pk_sign_bs, sk.SigKey, err = ed25519.GenerateKey(rand)
+func GenerateKey(rand io.Reader, now time.Time, lifetime time.Duration) (e *Entity, sk *SecretKey, err error) {
+	_, sk_sign, err := ed25519.GenerateKey(rand)
 	if err != nil {
 		return
 	}
+
+	_, sk_enc, err := box.GenerateKey(rand)
+	if err != nil {
+		return
+	}
+	sk = MakeKey(sk_sign, sk_enc, now, lifetime)
+	return sk.Entity, sk, nil
+}
+
+func MakeKey(sign *[ed25519.PrivateKeySize]byte, enc  *[32]byte, now time.Time, lifetime time.Duration) (sk *SecretKey) {
+	sk = new(SecretKey)
+	sk.sign = sign
+	sk.enc = enc
+	pk_sign_bs := sk.sign[32:]
+	pk_enc_bs := new([32]byte)
+	curve25519.ScalarBaseMult(pk_enc_bs, sk.enc)
+
 	_PublicKey_SIGNING := PublicKey_SIGNING
 	_PublickeyAlgorithm_ED25519 := PublickeyAlgorithm_ED25519
 	pk_sign := &PublicKey{Usage: &_PublicKey_SIGNING,
 		AuthorizedSignatureTags: []uint64{SIGN_TAG_WILDCARD},
 		Algo: &_PublickeyAlgorithm_ED25519,
-		Key: pk_sign_bs[:]}
-
-	pk_enc_bs, sk.EncKey, err = box.GenerateKey(rand)
-	if err != nil {
-		return
-	}
+		Key: pk_sign_bs}
 
 	u := PublicKey_KEY_AGREEMENT | PublicKey_PUBLICKEY_ENCRYPTION
 	_PublickeyAlgorithm_CURVE25519 := PublickeyAlgorithm_CURVE25519
 	pk_enc := &PublicKey{Algo: &_PublickeyAlgorithm_CURVE25519,
 		Usage: &u,
 		Key: pk_enc_bs[:]}
-
 	// Self-sign the key
 	t := new(int64)
 	*t = now.Unix()
@@ -144,15 +155,14 @@ func GenerateKey(rand io.Reader, now time.Time, lifetime time.Duration) (e *Enti
 	tagged_msg := append(proto.EncodeVarint(SIGN_TAG_SELFSIGN), ed_bytes...)
 	e_msg := &Signed{
 		Message: ed_bytes,
-		Sigs:    [][]byte{ed25519.Sign(sk.SigKey, tagged_msg)[:]}}
+		Sigs:    [][]byte{ed25519.Sign(sk.sign, tagged_msg)[:]}}
 
 	e_bytes, err := proto.Marshal(e_msg)
 	if err != nil {
 		return
 	}
 	sk.Entity = new(Entity)
-	e = sk.Entity
-	err = e.Parse(e_bytes)
+	err = sk.Entity.Parse(e_bytes)
 	return
 }
 
@@ -307,7 +317,7 @@ func (sk *SecretKey) CanonicalKeyAgreement(r *Entity) ([]byte, error) {
 		k := new([32]byte)
 		pk := new([32]byte)
 		copy(pk[:], r_pk.Key)
-		box.Precompute(k, pk, sk.EncKey)
+		box.Precompute(k, pk, sk.enc)
 		return (*k)[:], nil
 	}
 	return nil, errNoPubKey

@@ -19,10 +19,10 @@ func TestGenerateKey(t *testing.T) {
 		t.Errorf("Expected 2 public keys key but got %d", len(pk.PublicKeys))
 	}
 	_, sk2, err := GenerateKey(rand.Reader, tt, d)
-	if *sk.EncKey == *sk2.EncKey {
+	if *sk.enc == *sk2.enc {
 		t.Errorf("Same secret decryption key twice")
 	}
-	if *sk.SigKey == *sk2.SigKey {
+	if *sk.sign == *sk2.sign {
 		t.Errorf("Same secret signature signing key twice")
 	}
 }
