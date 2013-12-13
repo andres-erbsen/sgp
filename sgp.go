@@ -4,6 +4,7 @@ import (
 	"code.google.com/p/go.crypto/nacl/box"
 	"code.google.com/p/goprotobuf/proto"
 	"github.com/agl/ed25519"
+	"code.google.com/p/go.crypto/curve25519"
 	"crypto/sha256"
 	"io"
 	"io/ioutil"
@@ -103,30 +104,40 @@ type Entity struct {
 	Bytes        []byte
 }
 
-func GenerateKey(rand io.Reader, now time.Time, lifetime time.Duration) (e *Entity, sk SecretKey, err error) {
-	var pk_sign_bs, pk_enc_bs *[32]byte
-	pk_sign_bs, sk.sign, err = ed25519.GenerateKey(rand)
+func GenerateKey(rand io.Reader, now time.Time, lifetime time.Duration) (e *Entity, sk *SecretKey, err error) {
+	_, sk_sign, err := ed25519.GenerateKey(rand)
 	if err != nil {
 		return
 	}
+
+	_, sk_enc, err := box.GenerateKey(rand)
+	if err != nil {
+		return
+	}
+	sk = MakeKey(sk_sign, sk_enc, now, lifetime)
+	return sk.Entity, sk, nil
+}
+
+func MakeKey(sign *[ed25519.PrivateKeySize]byte, enc  *[32]byte, now time.Time, lifetime time.Duration) (sk *SecretKey) {
+	sk = new(SecretKey)
+	sk.sign = sign
+	sk.enc = enc
+	pk_sign_bs := sk.sign[32:]
+	pk_enc_bs := new([32]byte)
+	curve25519.ScalarBaseMult(pk_enc_bs, sk.enc)
+
 	_PublicKey_SIGNING := PublicKey_SIGNING
 	_PublickeyAlgorithm_ED25519 := PublickeyAlgorithm_ED25519
 	pk_sign := &PublicKey{Usage: &_PublicKey_SIGNING,
 		AuthorizedSignatureTags: []uint64{SIGN_TAG_WILDCARD},
 		Algo: &_PublickeyAlgorithm_ED25519,
-		Key: pk_sign_bs[:]}
-
-	pk_enc_bs, sk.enc, err = box.GenerateKey(rand)
-	if err != nil {
-		return
-	}
+		Key: pk_sign_bs}
 
 	u := PublicKey_KEY_AGREEMENT | PublicKey_PUBLICKEY_ENCRYPTION
 	_PublickeyAlgorithm_CURVE25519 := PublickeyAlgorithm_CURVE25519
 	pk_enc := &PublicKey{Algo: &_PublickeyAlgorithm_CURVE25519,
 		Usage: &u,
 		Key: pk_enc_bs[:]}
-
 	// Self-sign the key
 	t := new(int64)
 	*t = now.Unix()
@@ -151,8 +162,7 @@ func GenerateKey(rand io.Reader, now time.Time, lifetime time.Duration) (e *Enti
 		return
 	}
 	sk.Entity = new(Entity)
-	e = sk.Entity
-	err = e.Parse(e_bytes)
+	err = sk.Entity.Parse(e_bytes)
 	return
 }
 
