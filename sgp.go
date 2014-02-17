@@ -66,6 +66,34 @@ func (sk *SecretKey) Sign(message []byte, tag uint64) []byte {
 	return signed_bytes
 }
 
+func (sk *SecretKey) SignAmbiguous(message []byte, tag uint64) []byte {
+	pb := sk.SignPb(message, tag)
+	for i := range pb.KeyIds {
+		pb.KeyIds[i] = []byte{}
+	}
+	signed_bytes, err := proto.Marshal(pb)
+	if err != nil {
+		panic(err)
+	}
+	return signed_bytes
+}
+
+func (sk *SecretKey) Cosign(msg_signed_bs []byte, tag uint64) ([]byte, error) {
+	msg_signed := &Signed{}
+	err := proto.Unmarshal(msg_signed_bs, msg_signed)
+	if err != nil {
+		return []byte{}, errors.New("Bad signed msg")
+	}
+	tagged_msg := append(proto.EncodeVarint(tag), msg_signed.Message...)
+	msg_signed.KeyIds = append(msg_signed.KeyIds, sk.Entity.PublicKeys[OUR_SIGKEY_INDEX].ComputeFingerprint())
+	msg_signed.Sigs = append(msg_signed.KeyIds, ed25519.Sign(sk.sign, tagged_msg)[:])
+	signed_bytes, err := proto.Marshal(msg_signed)
+	if err != nil {
+		panic(err)
+	}
+	return signed_bytes, nil
+}
+
 func (sk *SecretKey) Serialize() []byte {
 	return append(append(sk.sign[:], sk.enc[:]...), sk.Entity.Bytes...)
 }
@@ -235,8 +263,8 @@ func (e *Entity) Parse(e_bytes []byte) (err error) {
 func (e *Entity) VerifyPb(sigmsg *Signed, tag uint64) bool {
 	for i, signerid := range sigmsg.KeyIds {
 		for _, pk := range e.PublicKeys {
-			if bytes.Equal(signerid, pk.ComputeFingerprint()) &&
-        	   pk.verifySignature(sigmsg.Message, sigmsg.Sigs[i], tag) {
+			if bytes.HasPrefix(pk.ComputeFingerprint(), signerid) &&
+				pk.verifySignature(sigmsg.Message, sigmsg.Sigs[i], tag) {
 				return true
 			}
 		}
@@ -258,6 +286,25 @@ func (e *Entity) Verify(signed_bytes []byte, tag uint64) ([]byte, error) {
 	}
 }
 
+type OneOf []*Entity
+func (es OneOf) Verify(signed_bytes []byte, tag uint64) ([]byte, int, error) {
+	signed :=  &Signed{}
+	err := proto.Unmarshal(signed_bytes, signed)
+	if err != nil {
+		return []byte{}, -1, errVerifyFailed
+	}
+	for i, e := range es {
+		for _, pk := range e.PublicKeys {
+			for j, signerid := range signed.KeyIds {
+				if bytes.HasPrefix(pk.ComputeFingerprint(), signerid) &&
+					pk.verifySignature(signed.Message, signed.Sigs[j], tag) {
+					return signed.Message, i, nil
+				}
+			}
+		}
+	}
+	return []byte{}, -1, errVerifyFailed
+}
 
 func (e *Entity) FirstKeyFor(usage uint32) *PublicKey {
 	for _, pk := range e.PublicKeys {
